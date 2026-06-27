@@ -1,0 +1,142 @@
+{% extends "layout.html" %}
+{% block main %}
+
+<div class="board-header">
+  <div class="page-header" style="margin-bottom:0">
+    <h1>Task Board</h1>
+    <p>
+      {{ todo|length + doing|length }} active &middot; {{ done|length }} done &middot; drag cards between columns
+    </p>
+  </div>
+  <button class="btn" data-open-add="todo">+ New task</button>
+</div>
+
+<!-- Kanban Board -->
+<div class="kanban-board">
+
+  {% for col in [
+      {'id':'todo',  'label':'To Do',       'dot':'todo',  'color':'#818cf8', 'tasks': todo},
+      {'id':'doing', 'label':'In Progress',  'dot':'doing', 'color':'#fbbf24', 'tasks': doing},
+      {'id':'done',  'label':'Completed',    'dot':'done',  'color':'#2dd4bf', 'tasks': done},
+  ] %}
+  <div class="kanban-column" data-status="{{ col.id }}">
+    <div class="column-header">
+      <div class="column-header-left">
+        <span class="col-dot {{ col.dot }}"></span>
+        <span class="col-label">{{ col.label }}</span>
+        <span class="col-count {{ col.dot }}">{{ col.tasks|length }}</span>
+      </div>
+      <button class="col-add-btn" data-open-add="{{ col.id }}" title="Add task">+</button>
+    </div>
+
+    <div class="task-list" id="{{ col.id }}-list">
+      {% for task in col.tasks %}
+      <div class="task-card" data-id="{{ task.id }}" data-priority="{{ task.priority }}" data-tags="{{ task.tags }}" draggable="true">
+        <div class="priority-strip {{ task.priority }}"></div>
+        <div class="task-topline">
+          <span class="task-title">{{ task.title }}</span>
+          <div class="task-actions">
+            <a href="/timer?task_id={{ task.id }}" class="icon-btn focus" title="Focus Timer">⏱</a>
+            <button class="icon-btn edit-task" data-id="{{ task.id }}" title="Edit Task">✏</button>
+            <button class="icon-btn delete-task danger" data-id="{{ task.id }}" title="Delete Task">×</button>
+          </div>
+        </div>
+        {% if task.description %}
+        <p class="task-desc">{{ task.description }}</p>
+        {% endif %}
+        <div class="task-footer">
+          <div class="task-tags">
+            {% if task.tags %}
+              {% for tag in task.tags.split(',') %}
+                {% if tag.strip() %}
+                <span class="tag-badge">{{ tag.strip() }}</span>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          </div>
+          {% if task.pomodoros > 0 %}
+          <span class="pomodoro-badge">🍅 ×{{ task.pomodoros }}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="empty-column">Drop tasks here</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+
+<!-- ═══ ADD TASK MODAL ═══ -->
+<div id="add-task-modal" class="modal-overlay" data-status="todo" data-priority="medium">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>New Task</h3>
+      <button class="modal-close">×</button>
+    </div>
+    <div class="modal-form">
+      <input id="add-title" type="text" placeholder="Task title *" autocomplete="off">
+      <textarea id="add-description" placeholder="Description (optional)" rows="3"></textarea>
+
+      <div>
+        <div class="modal-row-label">STATUS</div>
+        <div class="status-btns">
+          <button class="seg-btn" data-val="todo">To Do</button>
+          <button class="seg-btn" data-val="doing">In Progress</button>
+          <button class="seg-btn" data-val="done">Completed</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="modal-row-label">PRIORITY</div>
+        <div class="priority-btns">
+          <button class="seg-btn" data-val="low">Low</button>
+          <button class="seg-btn" data-val="medium">Medium</button>
+          <button class="seg-btn" data-val="high">High</button>
+          <button class="seg-btn" data-val="urgent">Urgent</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="modal-row-label">TAGS</div>
+        <div id="add-tags-area" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+          <input id="add-tag-input" type="text" placeholder="+ tag, press Enter" style="flex:1;min-width:80px;padding:.35rem .65rem;font-size:.78rem;">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <button id="add-task-submit" class="btn" style="flex:1">Add task</button>
+        <button class="btn btn-ghost" style="flex:1" onclick="document.getElementById('add-task-modal').classList.remove('open')">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ EDIT TASK MODAL ═══ -->
+<div id="edit-task-modal" class="modal-overlay">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Edit Task</h3>
+      <button class="modal-close">×</button>
+    </div>
+    <form id="edit-task-form" class="modal-form">
+      <input type="hidden" id="edit-task-id">
+      <input type="text" id="edit-task-title" placeholder="Task title *" required>
+      <textarea id="edit-task-description" placeholder="Description (optional)" rows="3"></textarea>
+      <select id="edit-task-priority">
+        <option value="urgent">🔴 Urgent</option>
+        <option value="high">🟠 High</option>
+        <option value="medium" selected>🟡 Medium</option>
+        <option value="low">🟢 Low</option>
+      </select>
+      <input type="text" id="edit-task-tags" placeholder="Tags (comma separated)">
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <button type="submit" class="btn" style="flex:1">Save changes</button>
+        <button type="button" class="btn btn-ghost" style="flex:1" onclick="document.getElementById('edit-task-modal').classList.remove('open')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

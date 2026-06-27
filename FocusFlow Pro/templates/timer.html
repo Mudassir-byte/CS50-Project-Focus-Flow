@@ -1,0 +1,300 @@
+{% extends "layout.html" %}
+{% block main %}
+
+<div class="timer-container">
+
+  <!-- Header -->
+  <div class="page-header">
+    <h1>Pomodoro Timer</h1>
+    <p id="timer-subtitle-text">
+      {% if task %}Focusing on: <strong style="color:#818cf8">{{ task.title }}</strong>{% else %}Focus session{% endif %}
+      &middot; <span id="sessions-completed-label">{{ today_sessions }}</span> sessions today
+    </p>
+  </div>
+
+  {% if task %}
+  <input type="hidden" id="current-task-id" value="{{ task.id }}">
+  {% endif %}
+
+  <!-- Focused-on selector -->
+  <div class="focus-selector">
+    <label>FOCUSING ON</label>
+    <select id="focus-task-select">
+      <option value="">— No task selected —</option>
+      {% for t in tasks if t.status != 'done' %}
+      <option value="{{ t.id }}" {% if task and t.id == task.id %}selected{% endif %}>{{ t.title }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Orbital SVG Timer Ring -->
+  <div class="ring-wrapper" style="height:252px;width:252px;margin:0 auto 1.5rem;">
+    <svg id="timer-svg" width="252" height="252" viewBox="0 0 252 252" style="overflow:visible;display:block;">
+      <defs>
+        <filter id="rg">
+          <feGaussianBlur stdDeviation="3" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="cg">
+          <feGaussianBlur stdDeviation="8" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <!-- Track -->
+      <circle cx="126" cy="126" r="98" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="10"/>
+      <!-- Progress arc -->
+      <circle id="ring-arc" cx="126" cy="126" r="98" fill="none"
+              stroke="#818cf8" stroke-width="10"
+              stroke-dasharray="615.75" stroke-dashoffset="615.75"
+              stroke-linecap="round"
+              transform="rotate(-90 126 126)"
+              filter="url(#rg)"
+              style="transition:stroke-dashoffset 1s linear, stroke .5s ease"/>
+      <!-- Comet glow -->
+      <circle id="comet-glow" cx="126" cy="28" r="16" fill="#818cf8" opacity="0" filter="url(#cg)"/>
+      <!-- Comet dot white -->
+      <circle id="comet-white" cx="126" cy="28" r="7" fill="#ffffff" opacity="0" filter="url(#rg)"/>
+      <!-- Comet dot colour -->
+      <circle id="comet-dot" cx="126" cy="28" r="3.5" fill="#818cf8" opacity="0"/>
+    </svg>
+
+    <!-- Inner display -->
+    <div class="ring-inner">
+      <div class="ring-mode-label" id="ring-mode">🎯 Focus</div>
+      <div class="ring-time" id="timer-display">25:00</div>
+      {% if task %}
+      <div class="ring-task-name">{{ task.title }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="timer-controls">
+    <button id="start-btn" class="btn btn-start">▶ Start</button>
+    <button id="pause-btn" class="btn btn-pause" style="display:none">⏸ Pause</button>
+    <button id="reset-btn" class="btn btn-ghost btn-reset" title="Reset">↺</button>
+    <button id="mode-btn"  class="btn btn-ghost btn-toggle">☕ Break</button>
+  </div>
+
+  <!-- Ambient sound (inline) -->
+  <div class="glass ambient-inline timer-settings-card">
+    <div class="settings-label">AMBIENT SOUND</div>
+    <div class="ambient-grid">
+      <button class="sound-btn" data-sound="rain"   title="Rain">🌧️</button>
+      <button class="sound-btn" data-sound="cafe"   title="Café">☕</button>
+      <button class="sound-btn" data-sound="forest" title="Forest">🌿</button>
+      <button class="sound-btn" data-sound="white"  title="White noise">〰️</button>
+    </div>
+    <button class="sound-toggle" id="timer-sound-toggle">🔇 Off</button>
+  </div>
+
+  <!-- Settings -->
+  <div class="glass timer-settings-card">
+    <div class="settings-label">TIMER SETTINGS</div>
+    <div class="settings-grid">
+      <div>
+        <label>Focus (min)</label>
+        <input type="number" id="focus-duration" min="1" max="90" value="25">
+      </div>
+      <div>
+        <label>Break (min)</label>
+        <input type="number" id="break-duration" min="1" max="30" value="5">
+      </div>
+    </div>
+    <p class="settings-tip">
+      💡 Pomodoro: 25 min focus → 5 min break → repeat. After 4 sessions, take a longer 15–30 min break.
+    </p>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  // ── Constants ──────────────────────────────────
+  const CIRC = 2 * Math.PI * 98;   // circumference of r=98
+  const C    = 126;                 // centre
+
+  // ── State ──────────────────────────────────────
+  let focusMin  = parseInt(localStorage.getItem('focusDuration'))  || 25;
+  let breakMin  = parseInt(localStorage.getItem('breakDuration'))   || 5;
+  let isFocus   = true;
+  let tLeft     = focusMin * 60;
+  let total     = focusMin * 60;
+  let running   = false;
+  let interval  = null;
+  let sessions  = parseInt('{{ today_sessions }}') || 0;
+
+  // ── DOM refs ───────────────────────────────────
+  const arc        = document.getElementById('ring-arc');
+  const cGlow      = document.getElementById('comet-glow');
+  const cWhite     = document.getElementById('comet-white');
+  const cDot       = document.getElementById('comet-dot');
+  const display    = document.getElementById('timer-display');
+  const modeLabel  = document.getElementById('ring-mode');
+  const startBtn   = document.getElementById('start-btn');
+  const pauseBtn   = document.getElementById('pause-btn');
+  const resetBtn   = document.getElementById('reset-btn');
+  const modeBtn    = document.getElementById('mode-btn');
+  const sessLabel  = document.getElementById('sessions-completed-label');
+  const focIn      = document.getElementById('focus-duration');
+  const brkIn      = document.getElementById('break-duration');
+  const taskIdEl   = document.getElementById('current-task-id');
+  const taskSelect = document.getElementById('focus-task-select');
+
+  focIn.value = focusMin;
+  brkIn.value = breakMin;
+
+  // ── Ring helpers ───────────────────────────────
+  function getColor() { return isFocus ? '#818cf8' : '#2dd4bf'; }
+
+  function updateRing(progress) {
+    const col = getColor();
+    const off = CIRC * (1 - Math.min(1, Math.max(0, progress)));
+    arc.setAttribute('stroke-dashoffset', off);
+    arc.setAttribute('stroke', col);
+
+    if (progress > 0.008) {
+      const ang = progress * 2 * Math.PI - Math.PI / 2;
+      const cx  = C + 98 * Math.cos(ang);
+      const cy  = C + 98 * Math.sin(ang);
+      [cGlow, cWhite, cDot].forEach(el => {
+        el.setAttribute('cx', cx);
+        el.setAttribute('cy', cy);
+        el.setAttribute('opacity', el === cGlow ? '0.14' : el === cWhite ? '0.95' : '1');
+      });
+      cGlow.setAttribute('fill', col);
+      cDot.setAttribute('fill', col);
+    } else {
+      [cGlow, cWhite, cDot].forEach(el => el.setAttribute('opacity', '0'));
+    }
+  }
+
+  function fmt(s) {
+    return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  }
+
+  function tick() {
+    tLeft--;
+    const progress = total > 0 ? 1 - tLeft / total : 0;
+    display.textContent = fmt(tLeft);
+    document.title = `${fmt(tLeft)} — FocusFlow`;
+    updateRing(progress);
+    if (tLeft <= 0) handleComplete();
+  }
+
+  function handleComplete() {
+    clearInterval(interval);
+    running = false;
+    startBtn.style.display = '';
+    pauseBtn.style.display = 'none';
+
+    const col = getColor();
+    if (isFocus) {
+      sessions++;
+      if (sessLabel) sessLabel.textContent = sessions;
+
+      // Log session to backend
+      fetch('/log_session', { method: 'POST' }).catch(() => {});
+
+      // Increment task pomodoro if one selected
+      const tid = taskIdEl?.value || taskSelect?.value;
+      if (tid) {
+        fetch('/increment_pomodoro', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `id=${tid}`
+        }).catch(() => {});
+      }
+
+      if (typeof showToast === 'function') showToast('🎉 Focus session done! Time for a break.', 'success');
+      isFocus = false;
+      tLeft = total = breakMin * 60;
+      modeLabel.textContent = '☕ Break';
+      modeBtn.textContent   = '🎯 Focus';
+    } else {
+      if (typeof showToast === 'function') showToast('🎯 Break over! Back to mission.', 'default');
+      isFocus = true;
+      tLeft = total = focusMin * 60;
+      modeLabel.textContent = '🎯 Focus';
+      modeBtn.textContent   = '☕ Break';
+    }
+    display.textContent = fmt(tLeft);
+    updateRing(0);
+  }
+
+  // ── Controls ───────────────────────────────────
+  startBtn.addEventListener('click', () => {
+    if (running) return;
+    running = true;
+    total   = isFocus ? focusMin * 60 : breakMin * 60;
+    if (tLeft <= 0) tLeft = total;
+    startBtn.style.display = 'none';
+    pauseBtn.style.display = '';
+    interval = setInterval(tick, 1000);
+  });
+
+  pauseBtn.addEventListener('click', () => {
+    clearInterval(interval);
+    running = false;
+    startBtn.style.display = '';
+    pauseBtn.style.display = 'none';
+  });
+
+  resetBtn.addEventListener('click', () => {
+    clearInterval(interval);
+    running = false;
+    isFocus = true;
+    tLeft   = total = focusMin * 60;
+    display.textContent   = fmt(tLeft);
+    document.title        = 'FocusFlow Pro';
+    modeLabel.textContent = '🎯 Focus';
+    modeBtn.textContent   = '☕ Break';
+    startBtn.style.display = '';
+    pauseBtn.style.display = 'none';
+    updateRing(0);
+  });
+
+  modeBtn.addEventListener('click', () => {
+    clearInterval(interval);
+    running = false;
+    isFocus = !isFocus;
+    tLeft   = total = (isFocus ? focusMin : breakMin) * 60;
+    display.textContent   = fmt(tLeft);
+    modeLabel.textContent = isFocus ? '🎯 Focus' : '☕ Break';
+    modeBtn.textContent   = isFocus ? '☕ Break' : '🎯 Focus';
+    startBtn.style.display = '';
+    pauseBtn.style.display = 'none';
+    updateRing(0);
+  });
+
+  // Duration inputs
+  focIn.addEventListener('change', () => {
+    focusMin = Math.max(1, Math.min(90, parseInt(focIn.value) || 1));
+    localStorage.setItem('focusDuration', focusMin);
+    focIn.value = focusMin;
+    if (!running && isFocus) { tLeft = total = focusMin * 60; display.textContent = fmt(tLeft); updateRing(0); }
+  });
+  brkIn.addEventListener('change', () => {
+    breakMin = Math.max(1, Math.min(30, parseInt(brkIn.value) || 1));
+    localStorage.setItem('breakDuration', breakMin);
+    brkIn.value = breakMin;
+    if (!running && !isFocus) { tLeft = total = breakMin * 60; display.textContent = fmt(tLeft); updateRing(0); }
+  });
+
+  // Focus task select
+  taskSelect?.addEventListener('change', () => {
+    if (taskIdEl) taskIdEl.value = taskSelect.value;
+  });
+
+  // Initial render
+  updateRing(0);
+  document.title = 'FocusFlow Pro';
+
+  // Request notification permission
+  if (window.Notification && Notification.permission !== 'granted') {
+    Notification.requestPermission();
+  }
+})();
+</script>
+
+{% endblock %}

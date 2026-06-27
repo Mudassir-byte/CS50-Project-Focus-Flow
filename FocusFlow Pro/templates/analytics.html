@@ -1,0 +1,296 @@
+{% extends "layout.html" %}
+{% block main %}
+
+<div class="page-header">
+  <h1>Analytics</h1>
+  <p>Your productivity at a glance</p>
+</div>
+
+<!-- ═══ 5 STAT TILES ═══ -->
+<div class="stat-tiles">
+  <div class="glass stat-tile">
+    <div class="tile-ico">🔥</div>
+    <div class="tile-val" style="color:#fbbf24">{{ streak }}d</div>
+    <div class="tile-label">STREAK</div>
+  </div>
+  <div class="glass stat-tile">
+    <div class="tile-ico">🍅</div>
+    <div class="tile-val" style="color:#818cf8" id="a-sessions">{{ today_sessions }}</div>
+    <div class="tile-label">SESSIONS</div>
+  </div>
+  <div class="glass stat-tile">
+    <div class="tile-ico">⏱</div>
+    <div class="tile-val" style="color:#a78bfa" id="a-focusmin">{{ today_sessions * 25 }}m</div>
+    <div class="tile-label">FOCUS</div>
+  </div>
+  <div class="glass stat-tile">
+    <div class="tile-ico">✅</div>
+    <div class="tile-val" style="color:#2dd4bf" id="a-done">0</div>
+    <div class="tile-label">COMPLETED</div>
+  </div>
+  <div class="glass stat-tile">
+    <div class="tile-ico">📊</div>
+    <div class="tile-val" style="color:#38bdf8" id="a-rate">—</div>
+    <div class="tile-label">RATE</div>
+  </div>
+</div>
+
+<!-- ═══ CHART ROW 1 ═══ -->
+<div class="chart-row">
+
+  <!-- Task Status Pie -->
+  <div class="glass chart-card">
+    <div class="chart-label">TASK STATUS</div>
+    <div style="height:200px;display:flex;justify-content:center;">
+      <canvas id="taskChart"></canvas>
+    </div>
+    <div id="status-legend" style="display:flex;justify-content:center;gap:.875rem;margin-top:8px;flex-wrap:wrap;"></div>
+  </div>
+
+  <!-- Weekly Sessions Bar -->
+  <div class="glass chart-card">
+    <div class="chart-label">SESSIONS THIS WEEK</div>
+    <div style="height:200px;">
+      <canvas id="weekChart"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══ CHART ROW 2 ═══ -->
+<div class="chart-row" style="margin-bottom:1.125rem;">
+
+  <!-- Productivity Stats -->
+  <div class="glass chart-card">
+    <div class="chart-label">PRODUCTIVITY STATS</div>
+    <div class="stats-list">
+      <div class="stats-row">
+        <span>Total Tasks</span>
+        <strong id="total-tasks" style="color:#e2e8f0">0</strong>
+      </div>
+      <div class="stats-row">
+        <span>Completed</span>
+        <strong id="completed-tasks" style="color:#2dd4bf">0</strong>
+      </div>
+      <div class="stats-row">
+        <span>In Progress</span>
+        <strong id="in-progress-tasks" style="color:#fbbf24">0</strong>
+      </div>
+      <div class="stats-row">
+        <span>To Do</span>
+        <strong id="todo-tasks" style="color:#818cf8">0</strong>
+      </div>
+      <div class="stats-row" style="border-bottom:none;font-size:1.2rem;">
+        <span>Completion Rate</span>
+        <strong id="completion-rate" class="gradient-text">0%</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- Priority Breakdown -->
+  <div class="glass chart-card">
+    <div class="chart-label">PRIORITY BREAKDOWN</div>
+    <div style="height:200px;">
+      <canvas id="priorityChart"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══ POMODOROS PER TASK ═══ -->
+<div class="glass chart-card" style="margin-bottom:1.5rem;" id="pom-card">
+  <div class="chart-label">POMODOROS PER TASK</div>
+  <div id="pom-container" style="height:0px;">
+    <canvas id="pomChart"></canvas>
+  </div>
+  <div id="pom-empty" style="text-align:center;color:#374151;padding:2rem;font-size:.8rem;display:none;">
+    Complete some Pomodoro sessions to see per-task data here.
+  </div>
+</div>
+
+<!-- ═══ TREND LINE ═══ -->
+<div class="glass chart-card" style="margin-bottom:2rem;">
+  <div class="chart-label">TASKS COMPLETED OVER TIME</div>
+  <div style="height:240px;">
+    <canvas id="trendChart"></canvas>
+  </div>
+</div>
+
+<!-- Hidden data -->
+<div id="analytics-data" style="display:none"
+     data-labels="{{ labels }}"
+     data-counts="{{ data }}"
+     data-trend-labels="{{ trend_labels }}"
+     data-trend-data="{{ trend_data }}"
+     data-priority-labels="{{ priority_labels }}"
+     data-priority-counts="{{ priority_data }}"
+     data-pomodoros="{{ pomodoros_total }}"
+     data-weekly="{{ weekly_sessions }}"
+     data-pom-tasks="{{ pom_tasks }}">
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+Chart.defaults.color = '#6b7280';
+Chart.defaults.font.family = "'Inter', sans-serif";
+
+const el = document.getElementById('analytics-data');
+const labels         = JSON.parse(el.dataset.labels);
+const data           = JSON.parse(el.dataset.counts);
+const trendLabels    = JSON.parse(el.dataset.trendLabels);
+const trendData      = JSON.parse(el.dataset.trendData);
+const priorityLabels = JSON.parse(el.dataset.priorityLabels);
+const priorityCounts = JSON.parse(el.dataset.priorityCounts);
+const totalPomodoros = parseInt(el.dataset.pomodoros, 10) || 0;
+const weekly         = JSON.parse(el.dataset.weekly);
+const pomTasks       = JSON.parse(el.dataset.pomTasks);
+
+const tooltip = {
+  plugins: {
+    tooltip: {
+      backgroundColor: '#0d1427',
+      borderColor: 'rgba(255,255,255,.1)',
+      borderWidth: 1,
+      titleColor: '#e2e8f0',
+      bodyColor: '#e2e8f0',
+      cornerRadius: 8,
+    }
+  }
+};
+
+// ─── Task Status Pie ───────────────────────────────────────────
+const pieColors = ['#818cf8','#fbbf24','#2dd4bf'];
+new Chart(document.getElementById('taskChart'), {
+  type: 'doughnut',
+  data: {
+    labels,
+    datasets: [{ data, backgroundColor: pieColors, borderColor: '#0d1427', borderWidth: 3 }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    cutout: '60%',
+    plugins: { legend: { display: false }, ...tooltip.plugins }
+  }
+});
+
+// Legend
+const leg = document.getElementById('status-legend');
+labels.forEach((l, i) => {
+  leg.innerHTML += `<span style="display:flex;align-items:center;gap:4px;font-size:.65rem;color:#6b7280">
+    <span style="width:7px;height:7px;border-radius:50%;background:${pieColors[i]};display:inline-block"></span>
+    ${l} (${data[i]})
+  </span>`;
+});
+
+// ─── Weekly Sessions Bar ────────────────────────────────────────
+new Chart(document.getElementById('weekChart'), {
+  type: 'bar',
+  data: {
+    labels: weekly.map(w => w.d),
+    datasets: [{
+      label: 'Sessions',
+      data: weekly.map(w => w.v),
+      backgroundColor: 'rgba(129,140,248,.7)',
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    scales: {
+      x: { ticks: { color: '#6b7280', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,.04)' }, border: { display: false } },
+      y: { ticks: { color: '#6b7280', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,.04)' }, border: { display: false }, beginAtZero: true }
+    },
+    plugins: { legend: { display: false }, ...tooltip.plugins }
+  }
+});
+
+// ─── Priority Doughnut ─────────────────────────────────────────
+new Chart(document.getElementById('priorityChart'), {
+  type: 'doughnut',
+  data: {
+    labels: priorityLabels,
+    datasets: [{
+      data: priorityCounts,
+      backgroundColor: ['rgba(255,107,107,.8)','rgba(248,113,113,.8)','rgba(251,191,36,.8)','rgba(45,212,191,.8)'],
+      borderColor: '#0d1427', borderWidth: 3
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    cutout: '60%',
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 12 } }, ...tooltip.plugins }
+  }
+});
+
+// ─── Pomodoros per Task (horizontal bar) ───────────────────────
+if (pomTasks.length > 0) {
+  const h = Math.max(110, pomTasks.length * 44);
+  document.getElementById('pom-container').style.height = h + 'px';
+  new Chart(document.getElementById('pomChart'), {
+    type: 'bar',
+    data: {
+      labels: pomTasks.map(t => t.name),
+      datasets: [{ label: 'Pomodoros', data: pomTasks.map(t => t.v),
+        backgroundColor: 'rgba(167,139,250,.75)', borderRadius: 4 }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { ticks: { color: '#6b7280', font:{size:11} }, grid: { color:'rgba(255,255,255,.04)' }, border:{display:false}, beginAtZero:true },
+        y: { ticks: { color: '#9ca3af', font:{size:11} }, grid: { display:false }, border:{display:false} }
+      },
+      plugins: { legend:{display:false}, ...tooltip.plugins }
+    }
+  });
+} else {
+  document.getElementById('pom-empty').style.display = 'block';
+}
+
+// ─── Trend Line ─────────────────────────────────────────────────
+new Chart(document.getElementById('trendChart'), {
+  type: 'line',
+  data: {
+    labels: trendLabels,
+    datasets: [{
+      label: 'Completed Tasks',
+      data: trendData,
+      borderColor: '#818cf8',
+      backgroundColor: 'rgba(129,140,248,.15)',
+      borderWidth: 2.5,
+      fill: true,
+      tension: 0.4,
+      pointBackgroundColor: '#818cf8',
+      pointRadius: 4,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    scales: {
+      y: { beginAtZero:true, ticks:{stepSize:1,color:'#6b7280'}, grid:{color:'rgba(255,255,255,.04)'}, border:{display:false} },
+      x: { ticks:{color:'#6b7280'}, grid:{color:'rgba(255,255,255,.04)'}, border:{display:false} }
+    },
+    plugins: { legend:{display:false}, ...tooltip.plugins }
+  }
+});
+
+// ─── Stats text ─────────────────────────────────────────────────
+const total   = data.reduce((a, b) => a + b, 0);
+const doneIdx = labels.indexOf('Done');
+const doingIdx= labels.indexOf('Doing');
+const todoIdx = labels.indexOf('Todo');
+const done    = doneIdx  !== -1 ? data[doneIdx]  : 0;
+const doing   = doingIdx !== -1 ? data[doingIdx] : 0;
+const todo    = todoIdx  !== -1 ? data[todoIdx]  : 0;
+const rate    = total > 0 ? Math.round(done / total * 100) : 0;
+
+document.getElementById('total-tasks').textContent      = total;
+document.getElementById('completed-tasks').textContent  = done;
+document.getElementById('in-progress-tasks').textContent = doing;
+document.getElementById('todo-tasks').textContent       = todo;
+document.getElementById('completion-rate').textContent  = rate + '%';
+document.getElementById('a-done').textContent           = done;
+document.getElementById('a-rate').textContent           = rate + '%';
+</script>
+
+{% endblock %}

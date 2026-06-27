@@ -1,0 +1,152 @@
+{% extends "layout.html" %}
+{% block main %}
+
+<div class="ai-page">
+
+  <!-- Header -->
+  <div class="page-header">
+    <h1>AI Coach</h1>
+    <p>Powered by Claude &middot; task breakdown, prioritization, focus strategies</p>
+  </div>
+
+  <!-- API Key notice (hidden once key is saved) -->
+  <div id="api-key-notice" class="api-key-notice" style="display:none;">
+    ⚠️ No API key configured. Paste your Anthropic API key below, or add it to
+    <code>.env</code> as <code>ANTHROPIC_API_KEY=sk-ant-…</code> and restart the server.
+    <div class="api-key-row">
+      <input id="api-key-input" type="password" placeholder="sk-ant-api03-…" style="flex:1;font-family:monospace;font-size:.82rem;">
+      <button class="btn" onclick="saveApiKey()" style="flex-shrink:0">Save key</button>
+    </div>
+  </div>
+
+  <!-- Quick prompts -->
+  <div class="quick-prompts">
+    {% for ico, text in [
+      ('🎯', 'Break down my biggest task'),
+      ('💡', 'What should I tackle next?'),
+      ('☕', 'Suggest a break activity'),
+      ('⚡', 'Help me beat procrastination'),
+      ('📋', 'Prioritize my task list'),
+    ] %}
+    <button class="quick-prompt-btn" onclick="fillPrompt('{{ text }}')">{{ ico }} {{ text }}</button>
+    {% endfor %}
+  </div>
+
+  <!-- Chat thread -->
+  <div class="chat-thread" id="chat-thread">
+    <div class="chat-row ai">
+      <div class="chat-bubble ai">
+        <div class="ai-label">✨ AI COACH</div>
+        Hey! I'm your FocusFlow AI coach. Ask me to break down tasks, help you prioritize, or suggest a break activity. I can see your current task list.
+      </div>
+    </div>
+  </div>
+
+  <!-- Input row -->
+  <div class="ai-input-row">
+    <input id="ai-input" type="text" placeholder="Ask your focus coach…"
+           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}">
+    <button class="btn" id="ai-send-btn" onclick="sendMsg()">Send</button>
+  </div>
+
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────
+const SERVER_HAS_KEY = {{ 'true' if has_api_key else 'false' }};
+let messages = [];
+let waiting  = false;
+
+// Show API key notice if no server key
+if (!SERVER_HAS_KEY && !localStorage.getItem('ai_api_key')) {
+  document.getElementById('api-key-notice').style.display = 'block';
+}
+
+function saveApiKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val) return;
+  localStorage.setItem('ai_api_key', val);
+  document.getElementById('api-key-notice').style.display = 'none';
+  if (typeof showToast === 'function') showToast('API key saved ✓', 'success');
+}
+
+function fillPrompt(text) {
+  document.getElementById('ai-input').value = text;
+  document.getElementById('ai-input').focus();
+}
+
+function appendMsg(role, text) {
+  const thread = document.getElementById('chat-thread');
+  const row    = document.createElement('div');
+  row.className = `chat-row ${role}`;
+  const bubble  = document.createElement('div');
+  bubble.className = `chat-bubble ${role}`;
+  if (role === 'ai') {
+    bubble.innerHTML = `<div class="ai-label">✨ AI COACH</div>${escHtmlInner(text)}`;
+  } else {
+    bubble.textContent = text;
+  }
+  row.appendChild(bubble);
+  thread.appendChild(row);
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function escHtmlInner(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/\n/g,'<br>');
+}
+
+function showThinking() {
+  const thread = document.getElementById('chat-thread');
+  const row = document.createElement('div');
+  row.className = 'chat-row ai';
+  row.id = 'thinking-row';
+  row.innerHTML = '<div class="thinking-bubble">✨ thinking…</div>';
+  thread.appendChild(row);
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function removeThinking() {
+  document.getElementById('thinking-row')?.remove();
+}
+
+async function sendMsg() {
+  if (waiting) return;
+  const input = document.getElementById('ai-input');
+  const text  = input.value.trim();
+  if (!text) return;
+
+  input.value = '';
+  appendMsg('user', text);
+  messages.push({ role: 'user', content: text });
+
+  waiting = true;
+  document.getElementById('ai-send-btn').style.opacity = '0.45';
+  showThinking();
+
+  try {
+    const apiKey = localStorage.getItem('ai_api_key') || '';
+    const res = await fetch('/ai_chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, api_key: apiKey }),
+    });
+    removeThinking();
+    const data = await res.json();
+    if (data.error) {
+      appendMsg('ai', '⚠️ ' + data.error);
+    } else {
+      messages.push({ role: 'assistant', content: data.reply });
+      appendMsg('ai', data.reply);
+    }
+  } catch (e) {
+    removeThinking();
+    appendMsg('ai', 'Connection issue — make sure you\'re online and try again.');
+  }
+
+  waiting = false;
+  document.getElementById('ai-send-btn').style.opacity = '1';
+}
+</script>
+
+{% endblock %}

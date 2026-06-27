@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="FocusFlow Pro — Deep Work Tracker with Kanban Board, Pomodoro Timer, AI Coach, and Analytics.">
+  <title>FocusFlow Pro | Deep Work Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
+</head>
+<body>
+<div class="app-container">
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar animate-fade">
+    <!-- Logo -->
+    <div class="logo">
+      <h2>
+        <span class="word-focus">Focus</span><span class="word-flow">Flow</span>
+        <span class="pro-badge">PRO</span>
+      </h2>
+      <div class="tagline">DEEP WORK TRACKER</div>
+    </div>
+
+    <!-- Live stats -->
+    <div class="sidebar-stats">
+      <div class="sidebar-stat">
+        <span class="stat-key">STREAK</span>
+        <span class="stat-val" id="sidebar-streak" style="color:#fbbf24">🔥 {{ streak }} days</span>
+      </div>
+      <div class="sidebar-stat">
+        <span class="stat-key">TODAY</span>
+        <span class="stat-val" id="sidebar-sessions" style="color:#2dd4bf">🍅 {{ today_sessions }} sessions</span>
+      </div>
+      <div class="sidebar-stat">
+        <span class="stat-key">ACTIVE</span>
+        <span class="stat-val" id="sidebar-active" style="color:#818cf8">📋 {{ active_count }} tasks</span>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav>
+      <a href="/"         class="nav-item {% if request.endpoint == 'index'     %}active{% endif %}">
+        <span class="nav-ico">📋</span> Task Board
+      </a>
+      <a href="/timer"    class="nav-item {% if request.endpoint == 'timer'     %}active{% endif %}">
+        <span class="nav-ico">⏱️</span> Timer
+      </a>
+      <a href="/analytics" class="nav-item {% if request.endpoint == 'analytics' %}active{% endif %}">
+        <span class="nav-ico">📊</span> Analytics
+      </a>
+      <a href="/ai"       class="nav-item {% if request.endpoint == 'ai'        %}active{% endif %}">
+        <span class="nav-ico">✨</span> AI Coach
+      </a>
+    </nav>
+
+    <!-- Ambient sound -->
+    <div class="ambient-section">
+      <div class="section-label">AMBIENT SOUND</div>
+      <div class="ambient-grid">
+        <button class="sound-btn" data-sound="rain"   title="Rain">🌧️</button>
+        <button class="sound-btn" data-sound="cafe"   title="Café">☕</button>
+        <button class="sound-btn" data-sound="forest" title="Forest">🌿</button>
+        <button class="sound-btn" data-sound="white"  title="White noise">〰️</button>
+      </div>
+      <button class="sound-toggle" id="sidebar-sound-toggle">🔇 Off</button>
+    </div>
+  </aside>
+
+  <!-- ═══ MAIN CONTENT ═══ -->
+  <main class="content animate-fade" style="animation-delay:.08s">
+    {% block main %}{% endblock %}
+  </main>
+</div>
+
+<!-- ═══ TOAST CONTAINER ═══ -->
+<div id="toast-container"></div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
